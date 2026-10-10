@@ -1,0 +1,129 @@
+```yaml
+name: DEVFORGE Windows Build
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: devforge-windows-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-windows:
+    name: Build DEVFORGE for Windows
+    runs-on: windows-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@v5
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: Cache Rust build files
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            src-tauri -> target
+
+      - name: Check project files
+        shell: pwsh
+        run: |
+          if (!(Test-Path "package.json")) {
+            throw "package.json was not found at the repository root."
+          }
+
+          if (!(Test-Path "src-tauri/tauri.conf.json")) {
+            throw "src-tauri/tauri.conf.json was not found. Check the project folder structure."
+          }
+
+          if (!(Test-Path "package-lock.json")) {
+            Write-Host "No package-lock.json found. npm install will be used."
+          }
+
+      - name: Install JavaScript dependencies
+        shell: pwsh
+        run: |
+          if (Test-Path "package-lock.json") {
+            npm ci
+          } else {
+            npm install
+          }
+
+      - name: Check TypeScript
+        run: npm run check
+
+      - name: Run project tests
+        run: npm test
+        continue-on-error: false
+
+      - name: Build frontend
+        run: npm run build
+
+      - name: Build Windows desktop application
+        run: npm run build:desktop
+
+      - name: Locate generated Windows installers
+        id: locate-installers
+        shell: pwsh
+        run: |
+          $bundle = "src-tauri/target/release/bundle"
+
+          if (!(Test-Path $bundle)) {
+            throw "The Tauri bundle folder was not created. Check the desktop build logs."
+          }
+
+          $installers = Get-ChildItem $bundle -Recurse -File |
+            Where-Object {
+              $_.Extension -in @(".exe", ".msi")
+            }
+
+          if (!$installers) {
+            Write-Host "No .exe or .msi installer was found. Listing generated files:"
+            Get-ChildItem $bundle -Recurse -File |
+              Select-Object FullName, Length
+            throw "Build completed without producing a Windows installer."
+          }
+
+          Write-Host "Generated installer files:"
+          $installers | ForEach-Object {
+            Write-Host "$($_.FullName) ($($_.Length) bytes)"
+          }
+
+      - name: Upload Windows installers
+        uses: actions/upload-artifact@v4
+        with:
+          name: DEVFORGE-Windows-Installers
+          path: |
+            src-tauri/target/release/bundle/**/*.exe
+            src-tauri/target/release/bundle/**/*.msi
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload additional build output for troubleshooting
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: DEVFORGE-Windows-Build-Logs
+          path: |
+            src-tauri/target/release/
+            !src-tauri/target/release/deps/
+            !src-tauri/target/release/build/
+          if-no-files-found: ignore
+          retention-days: 7
+```

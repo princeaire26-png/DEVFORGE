@@ -1,4 +1,3 @@
-```yaml
 name: DEVFORGE Windows Build
 
 on:
@@ -21,7 +20,7 @@ jobs:
     timeout-minutes: 60
 
     steps:
-      - name: Checkout source code
+      - name: Checkout source
         uses: actions/checkout@v5
 
       - name: Set up Node.js
@@ -41,22 +40,18 @@ jobs:
           workspaces: |
             src-tauri -> target
 
-      - name: Check project files
+      - name: Verify project structure
         shell: pwsh
         run: |
           if (!(Test-Path "package.json")) {
-            throw "package.json was not found at the repository root."
+            throw "Missing package.json at repository root."
           }
 
           if (!(Test-Path "src-tauri/tauri.conf.json")) {
-            throw "src-tauri/tauri.conf.json was not found. Check the project folder structure."
+            throw "Missing src-tauri/tauri.conf.json."
           }
 
-          if (!(Test-Path "package-lock.json")) {
-            Write-Host "No package-lock.json found. npm install will be used."
-          }
-
-      - name: Install JavaScript dependencies
+      - name: Install dependencies
         shell: pwsh
         run: |
           if (Test-Path "package-lock.json") {
@@ -68,41 +63,36 @@ jobs:
       - name: Check TypeScript
         run: npm run check
 
-      - name: Run project tests
+      - name: Run tests
         run: npm test
-        continue-on-error: false
 
       - name: Build frontend
         run: npm run build
 
-      - name: Build Windows desktop application
+      - name: Build Windows desktop app
         run: npm run build:desktop
 
-      - name: Locate generated Windows installers
-        id: locate-installers
+      - name: Verify Windows installer
         shell: pwsh
         run: |
           $bundle = "src-tauri/target/release/bundle"
 
           if (!(Test-Path $bundle)) {
-            throw "The Tauri bundle folder was not created. Check the desktop build logs."
+            throw "Build output folder not found: $bundle"
           }
 
-          $installers = Get-ChildItem $bundle -Recurse -File |
-            Where-Object {
-              $_.Extension -in @(".exe", ".msi")
-            }
+          $files = Get-ChildItem $bundle -Recurse -File |
+            Where-Object { $_.Extension -in @(".exe", ".msi") }
 
-          if (!$installers) {
-            Write-Host "No .exe or .msi installer was found. Listing generated files:"
+          if (!$files) {
             Get-ChildItem $bundle -Recurse -File |
               Select-Object FullName, Length
-            throw "Build completed without producing a Windows installer."
+
+            throw "No EXE or MSI installer was generated."
           }
 
-          Write-Host "Generated installer files:"
-          $installers | ForEach-Object {
-            Write-Host "$($_.FullName) ($($_.Length) bytes)"
+          $files | ForEach-Object {
+            Write-Host "Installer: $($_.FullName)"
           }
 
       - name: Upload Windows installers
@@ -114,16 +104,4 @@ jobs:
             src-tauri/target/release/bundle/**/*.msi
           if-no-files-found: error
           retention-days: 14
-
-      - name: Upload additional build output for troubleshooting
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: DEVFORGE-Windows-Build-Logs
-          path: |
-            src-tauri/target/release/
-            !src-tauri/target/release/deps/
-            !src-tauri/target/release/build/
-          if-no-files-found: ignore
-          retention-days: 7
 ```

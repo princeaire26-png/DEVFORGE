@@ -57,15 +57,47 @@ function demoPlan(idea:string){
 
 app.get('/api/health',(_req,res)=>res.json({ok:true, service:'DEVFORGE', version:'1.5.1'}));
 app.get('/api/projects',(_req,res)=>{
- const rows=db.prepare('SELECT * FROM projects ORDER BY updated_at DESC').all();
- res.json(rows);
+ const rows=db.prepare(`
+  SELECT p.*,
+   plan.mode AS mode,
+   build.status AS build_status
+  FROM projects p
+  LEFT JOIN plans plan ON plan.id=(
+   SELECT id FROM plans WHERE project_id=p.id ORDER BY id DESC LIMIT 1
+  )
+  LEFT JOIN builds build ON build.id=(
+   SELECT id FROM builds WHERE project_id=p.id ORDER BY id DESC LIMIT 1
+  )
+  ORDER BY p.updated_at DESC
+ `).all() as any[];
+ res.json(rows.map(({mode,build_status,...project})=>({
+  ...project,
+  status:mode==='demo'&&project.status==='complete'?'demo':project.status,
+  mode:mode||'unknown',
+  verified:mode!=='demo'&&build_status==='passed'
+ })));
 });
 app.get('/api/projects/:id',(req,res)=>{
- const p=db.prepare('SELECT * FROM projects WHERE id=?').get(Number(req.params.id));
+  const p=db.prepare('SELECT * FROM projects WHERE id=?').get(Number(req.params.id)) as any;
  if(!p) return res.status(404).json({error:'Project not found'});
  const plan=db.prepare('SELECT * FROM plans WHERE project_id=? ORDER BY id DESC LIMIT 1').get((p as any).id) as any;
  const build=db.prepare('SELECT * FROM builds WHERE project_id=? ORDER BY id DESC LIMIT 1').get((p as any).id) as any;
- res.json({...p, plan:plan?{...plan,plan_json:JSON.parse(plan.plan_json)}:null, build:build?{...build,steps_json:JSON.parse(build.steps_json)}:null});
+  const legacyDemoBuild=plan?.mode==='demo'&&build?.status==='complete';
+  const safeBuild=build?{
+   ...build,
+   status:legacyDemoBuild?'demo':build.status,
+   steps_json:JSON.parse(build.steps_json).map((step:any)=>legacyDemoBuild?{
+    ...step,status:'not-run',detail:'Legacy demo record: no project generation or validation was performed.'
+   }:step)
+  }:null;
+  res.json({
+   ...p,
+   status:plan?.mode==='demo'&&p.status==='complete'?'demo':p.status,
+   mode:plan?.mode||'unknown',
+   verified:plan?.mode!=='demo'&&build?.status==='passed',
+   plan:plan?{...plan,plan_json:JSON.parse(plan.plan_json)}:null,
+   build:safeBuild
+  });
 });
 
 app.post('/api/projects/plan',async(req,res)=>{
@@ -90,17 +122,11 @@ app.post('/api/projects/approve',async(req,res)=>{
  if(!parsed.success) return res.status(400).json({error:'Invalid project id'});
  const p=db.prepare('SELECT * FROM projects WHERE id=?').get(parsed.data.projectId) as any;
  if(!p) return res.status(404).json({error:'Project not found'});
- db.prepare('UPDATE projects SET status=?,updated_at=? WHERE id=?').run('building',now(),p.id);
- const steps=[
-  {key:'architecture',label:'Architecture',status:'complete',detail:'Project structure prepared'},
-  {key:'generation',label:'Code generation',status:'complete',detail:'Starter application generated'},
-  {key:'validation',label:'Validation',status:'complete',detail:'Static project validation passed'},
-  {key:'preview',label:'Preview',status:'ready',detail:'Preview package is ready'}
- ];
- const t=now();
- const b=db.prepare('INSERT INTO builds(project_id,status,steps_json,created_at) VALUES(?,?,?,?)').run(p.id,'complete',JSON.stringify(steps),t);
- db.prepare('UPDATE projects SET status=?,updated_at=? WHERE id=?').run('complete',t,p.id);
- res.json({buildId:Number(b.lastInsertRowid),status:'complete',steps});
+ const plan=db.prepare('SELECT mode FROM plans WHERE project_id=? ORDER BY id DESC LIMIT 1').get(p.id) as any;
+ if(plan?.mode==='demo') {
+  return res.status(409).json({error:'This demo blueprint has no generated workspace. No build or validation was recorded; use the DEVFORGE desktop app to create and validate a native workspace.'});
+ }
+ return res.status(501).json({error:'Project generation and validation are not implemented by the web API. No build state was changed.'});
 });
 
 app.post('/api/projects/:id/chat',async(req,res)=>{

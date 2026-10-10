@@ -683,6 +683,24 @@ fn command_timeout(program: &str, args: &[&str], cwd: &Path, timeout: Duration) 
     })
 }
 
+fn copilot_prompt_args(prompt: &str) -> Vec<String> {
+    vec![
+        "-p".into(),
+        prompt.to_string(),
+        "-s".into(),
+        "--available-tools=view".into(),
+        "--no-ask-user".into(),
+    ]
+}
+
+fn run_copilot_prompt(cwd: &Path, prompt: &str, timeout: Duration) -> Result<TerminalResult, String> {
+    let owned_args = copilot_prompt_args(prompt);
+    let args = owned_args.iter().map(String::as_str).collect::<Vec<_>>();
+    let mut result = command_timeout("copilot", &args, cwd, timeout)?;
+    result.command = "copilot -p [prompt redacted] --available-tools=view --no-ask-user".into();
+    Ok(result)
+}
+
 #[tauri::command]
 fn read_project_file(app: tauri::AppHandle, root: String, relative: String) -> Result<FileDocument,String> {
     let project=safe_project_root(&app,&root)?; let file=safe_project_file(&app,&root,&relative)?;
@@ -747,14 +765,14 @@ fn workspace_git_status(root: String) -> Result<GitResult,String> {
 #[tauri::command]
 fn workspace_copilot_status(root: String) -> Result<TerminalResult,String> {
     let workspace=canonical_workspace_root(&root)?;
-    command_timeout("copilot", &["-sp","Respond with exactly: COPILOT_READY"], &workspace, Duration::from_secs(45))
-        .or_else(|_|Ok(TerminalResult{command:"copilot".into(),cwd:workspace.to_string_lossy().to_string(),status:"unavailable".into(),exit_code:None,stdout:String::new(),stderr:"GitHub Copilot CLI is not installed or authenticated.".into(),duration_ms:0}))
+    run_copilot_prompt(&workspace,"Respond with exactly: COPILOT_READY",Duration::from_secs(45))
+        .or_else(|e|Ok(TerminalResult{command:"copilot".into(),cwd:workspace.to_string_lossy().to_string(),status:"unavailable".into(),exit_code:None,stdout:String::new(),stderr:format!("Could not start GitHub Copilot CLI: {e}"),duration_ms:0}))
 }
 
 #[tauri::command]
 fn workspace_ask_copilot(root: String, prompt: String) -> Result<TerminalResult,String> {
     let workspace=canonical_workspace_root(&root)?; if prompt.trim().is_empty(){return Err("Copilot prompt cannot be empty.".into());}
-    command_timeout("copilot", &["-sp",&prompt], &workspace, Duration::from_secs(180))
+    run_copilot_prompt(&workspace,&prompt,Duration::from_secs(180))
         .or_else(|e|Ok(TerminalResult{command:"copilot -sp".into(),cwd:workspace.to_string_lossy().to_string(),status:"unavailable".into(),exit_code:None,stdout:String::new(),stderr:e,duration_ms:0}))
 }
 
@@ -766,15 +784,14 @@ fn git_status(app: tauri::AppHandle, root: String) -> Result<GitResult,String> {
 
 #[tauri::command]
 fn copilot_status(app: tauri::AppHandle, root: String) -> Result<TerminalResult,String> {
-    let project=safe_project_root(&app,&root)?; let r=command_timeout("copilot",&["-sp","Respond with exactly: COPILOT_READY"],&project,Duration::from_secs(45));
-    r.or_else(|_|Ok(TerminalResult{command:"copilot".into(),cwd:project.to_string_lossy().to_string(),status:"unavailable".into(),exit_code:None,stdout:String::new(),stderr:"GitHub Copilot CLI is not installed or authenticated.".into(),duration_ms:0}))
+    let project=safe_project_root(&app,&root)?; let r=run_copilot_prompt(&project,"Respond with exactly: COPILOT_READY",Duration::from_secs(45));
+    r.or_else(|e|Ok(TerminalResult{command:"copilot".into(),cwd:project.to_string_lossy().to_string(),status:"unavailable".into(),exit_code:None,stdout:String::new(),stderr:format!("Could not start GitHub Copilot CLI: {e}"),duration_ms:0}))
 }
 
 #[tauri::command]
 fn ask_copilot(app: tauri::AppHandle, root: String, prompt: String) -> Result<TerminalResult,String> {
     let project=safe_project_root(&app,&root)?; if prompt.trim().is_empty(){return Err("Copilot prompt cannot be empty.".into());}
-    // Copilot CLI owns GitHub authentication and permission prompts. DEVFORGE invokes its documented non-interactive mode.
-    command_timeout("copilot",&["-sp",&prompt],&project,Duration::from_secs(180)).or_else(|e|Ok(TerminalResult{command:"copilot -sp".into(),cwd:project.to_string_lossy().to_string(),status:"unavailable".into(),exit_code:None,stdout:String::new(),stderr:e,duration_ms:0}))
+    run_copilot_prompt(&project,&prompt,Duration::from_secs(180)).or_else(|e|Ok(TerminalResult{command:"copilot -p [prompt redacted]".into(),cwd:project.to_string_lossy().to_string(),status:"unavailable".into(),exit_code:None,stdout:String::new(),stderr:e,duration_ms:0}))
 }
 
 
@@ -1230,6 +1247,18 @@ mod tests {
     }
 
     #[test]
+    fn copilot_prompts_are_noninteractive_read_only_and_preserve_the_prompt_as_one_argument() {
+        let prompt = "Explain this code; do not modify it.";
+        let args = copilot_prompt_args(prompt);
+        assert_eq!(args[0], "-p");
+        assert_eq!(args[1], prompt);
+        assert!(args.iter().any(|arg| arg == "-s"));
+        assert!(args.iter().any(|arg| arg == "--available-tools=view"));
+        assert!(args.iter().any(|arg| arg == "--no-ask-user"));
+        assert!(!args.iter().any(|arg| arg.contains("write") || arg.contains("shell")));
+    }
+
+    #[test]
     fn restores_backups_only_when_the_changed_file_is_unmodified() {
         let root = temp_workspace("restore");
         let relative = Path::new("src").join("main.ts");
@@ -1257,7 +1286,7 @@ mod tests {
         let path = std::env::temp_dir();
         let args = ["--exact", "tests::timeout_stops_the_command_and_captures_its_result", "--nocapture"];
         std::env::set_var("DEVFORGE_TIMEOUT_TEST_CHILD", "1");
-        let result = capture_command(executable.to_str().unwrap(), &args, path, Duration::from_millis(150)).unwrap();
+        let result = capture_command(executable.to_str().unwrap(), &args, &path, Duration::from_millis(150)).unwrap();
         std::env::remove_var("DEVFORGE_TIMEOUT_TEST_CHILD");
         assert!(result.timed_out);
         assert!(result.status.is_none());

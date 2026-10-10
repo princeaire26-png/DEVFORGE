@@ -1286,7 +1286,7 @@ mod tests {
         let path = std::env::temp_dir();
         let args = ["--exact", "tests::timeout_stops_the_command_and_captures_its_result", "--nocapture"];
         std::env::set_var("DEVFORGE_TIMEOUT_TEST_CHILD", "1");
-        let result = capture_command(executable.to_str().unwrap(), &args, path, Duration::from_millis(150)).unwrap();
+        let result = capture_command(executable.to_str().unwrap(), &args, &path, Duration::from_millis(150)).unwrap();
         std::env::remove_var("DEVFORGE_TIMEOUT_TEST_CHILD");
         assert!(result.timed_out);
         assert!(result.status.is_none());

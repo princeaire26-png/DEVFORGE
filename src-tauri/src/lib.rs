@@ -538,7 +538,7 @@ fn open_workspace_folder(path: String) -> Result<WorkspaceInfo, String> {
 #[tauri::command]
 fn list_workspace_files(root: String) -> Result<Vec<String>, String> {
     let base=canonical_workspace_root(&root)?; let mut out=Vec::new();
-    for p in workspace_files(&base)? { if let Ok(r)=p.strip_prefix(&base){out.push(r.to_string_lossy().replace('\\','/'));} }
+    for p in workspace_files(&base)? { if let Ok(r)=p.strip_prefix(&base){out.push(r.to_string_lossy().replace('\\', "/"));} }
     out.sort(); out.truncate(5000); Ok(out)
 }
 

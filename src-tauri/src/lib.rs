@@ -567,7 +567,7 @@ fn list_project_files(root: String) -> Result<Vec<String>, String> {
         for e in fs::read_dir(dir).map_err(|e| e.to_string())? {
             let e=e.map_err(|e| e.to_string())?; let p=e.path();
             if ["target","node_modules",".git"].contains(&p.file_name().and_then(|x|x.to_str()).unwrap_or("")) { continue; }
-            if p.is_dir() { walk(base,&p,out)?; } else if let Ok(r)=p.strip_prefix(base) { out.push(r.to_string_lossy().replace('\\','/')); }
+            if p.is_dir() { walk(base,&p,out)?; } else if let Ok(r)=p.strip_prefix(base) { out.push(r.to_string_lossy().replace('\\',"/")); }
         }
         Ok(())
     }
@@ -701,7 +701,7 @@ fn write_project_file(app: tauri::AppHandle, root: String, relative: String, con
 fn search_project(app: tauri::AppHandle, root: String, query: String) -> Result<Vec<String>,String> {
     let project=safe_project_root(&app,&root)?; if query.trim().is_empty(){return Ok(vec![]);} let q=query.to_lowercase(); let mut hits=Vec::new();
     fn walk(base:&Path,dir:&Path,q:&str,hits:&mut Vec<String>)->Result<(),String>{
-        for e in fs::read_dir(dir).map_err(|e|e.to_string())? { let e=e.map_err(|e|e.to_string())?; let p=e.path(); let n=p.file_name().and_then(|x|x.to_str()).unwrap_or(""); if ["node_modules","target",".git",".devforge"].contains(&n){continue;} if p.is_dir(){walk(base,&p,q,hits)?;} else if let Ok(c)=fs::read_to_string(&p){if c.to_lowercase().contains(q){if let Ok(r)=p.strip_prefix(base){hits.push(r.to_string_lossy().replace('\\','/'));}}}} Ok(()) }
+        for e in fs::read_dir(dir).map_err(|e|e.to_string())? { let e=e.map_err(|e|e.to_string())?; let p=e.path(); let n=p.file_name().and_then(|x|x.to_str()).unwrap_or(""); if ["node_modules","target",".git",".devforge"].contains(&n){continue;} if p.is_dir(){walk(base,&p,q,hits)?;} else if let Ok(c)=fs::read_to_string(&p){if c.to_lowercase().contains(q){if let Ok(r)=p.strip_prefix(base){hits.push(r.to_string_lossy().replace('\\',"/"));}}}} Ok(()) }
     walk(&project,&project,&q,&mut hits)?; hits.sort(); hits.truncate(200); Ok(hits)
 }
 

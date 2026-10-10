@@ -75,7 +75,7 @@ fn extract_symbols_imports(path:&Path, root:&Path, syms:&mut Vec<CodeSymbol>, im
     let bytes=match fs::read(path){Ok(b)=>b,Err(_)=>return};
     if bytes.len()>2_000_000 || bytes.iter().take(8192).any(|b|*b==0){return;}
     let text=match String::from_utf8(bytes){Ok(s)=>s,Err(_)=>return};
-    let rel=path.strip_prefix(root).unwrap_or(path).to_string_lossy().replace('\\','/');
+    let rel=path.strip_prefix(root).unwrap_or(path).to_string_lossy().replace('\\',"/");
     for (i,line) in text.lines().enumerate(){
         let t=line.trim();
         for (prefix,kind) in [("fn ","function"),("function ","function"),("class ","class"),("interface ","interface"),("struct ","struct"),("enum ","enum"),("def ","function"),("func ","function")].iter(){
@@ -91,7 +91,7 @@ fn extract_symbols_imports(path:&Path, root:&Path, syms:&mut Vec<CodeSymbol>, im
 pub fn analyze_codebase(root:&Path)->Result<CodebaseReport,String>{
     let mut paths=Vec::new(); walk(root,&mut paths).map_err(|e|e.to_string())?;
     let mut files=Vec::new(); let mut syms=Vec::new(); let mut imports=Vec::new(); let mut langs=BTreeSet::new(); let mut manifests=Vec::new();
-    for f in &paths { let info=language_for_path(&f.to_string_lossy()); langs.insert(info.id.clone()); let bytes=fs::metadata(f).map(|m|m.len()).unwrap_or(0); let rel=f.strip_prefix(root).unwrap_or(f).to_string_lossy().replace('\\','/'); files.push(FileNode{path:rel,language:info.id.clone(),bytes}); extract_symbols_imports(f,root,&mut syms,&mut imports); if let Some(n)=f.file_name().and_then(|x|x.to_str()){ if ["package.json","Cargo.toml","pyproject.toml","requirements.txt","go.mod","pom.xml","build.gradle","build.gradle.kts","CMakeLists.txt","composer.json","Gemfile","pubspec.yaml","mix.exs"].iter().any(|m|*m==n)||n.ends_with(".sln"){manifests.push(n.into());}} }
+    for f in &paths { let info=language_for_path(&f.to_string_lossy()); langs.insert(info.id.clone()); let bytes=fs::metadata(f).map(|m|m.len()).unwrap_or(0); let rel=f.strip_prefix(root).unwrap_or(f).to_string_lossy().replace('\\',"/"); files.push(FileNode{path:rel,language:info.id.clone(),bytes}); extract_symbols_imports(f,root,&mut syms,&mut imports); if let Some(n)=f.file_name().and_then(|x|x.to_str()){ if ["package.json","Cargo.toml","pyproject.toml","requirements.txt","go.mod","pom.xml","build.gradle","build.gradle.kts","CMakeLists.txt","composer.json","Gemfile","pubspec.yaml","mix.exs"].iter().any(|m|*m==n)||n.ends_with(".sln"){manifests.push(n.into());}} }
     let mut deps=Vec::new();
     let package=root.join("package.json"); if let Ok(text)=fs::read_to_string(package){if let Ok(v)=serde_json::from_str::<serde_json::Value>(&text){for section in ["dependencies","devDependencies"]{if let Some(o)=v.get(section).and_then(|x|x.as_object()){for(k,val) in o{deps.push(DependencyInfo{manager:"npm".into(),name:k.clone(),version:val.as_str().unwrap_or("*").into()});}}}}}
     for (name,manager) in [("requirements.txt","pip"),("go.mod","go"),("Cargo.toml","cargo")] {let p=root.join(name);if let Ok(text)=fs::read_to_string(p){for line in text.lines(){let t=line.trim();if t.is_empty()||t.starts_with('#')||t.starts_with('['){continue} if manager=="pip"{let n=t.split(['=','>','<']).next().unwrap_or(t).trim();deps.push(DependencyInfo{manager:manager.into(),name:n.into(),version:t.into()});} else if let Some((k,v))=t.split_once('='){deps.push(DependencyInfo{manager:manager.into(),name:k.trim().into(),version:v.trim().trim_matches('"').into()});}}}}

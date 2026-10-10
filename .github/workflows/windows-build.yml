@@ -104,4 +104,3 @@ jobs:
             src-tauri/target/release/bundle/**/*.msi
           if-no-files-found: error
           retention-days: 14
-```

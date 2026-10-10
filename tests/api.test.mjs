@@ -82,3 +82,35 @@ test('API does not label an unavailable provider as AI-generated', async () => {
     assert.match(result.error, /no configured AI provider/i);
   });
 });
+
+test('demo approval cannot create a fake completed build', async () => {
+  await withServer('demo', async base => {
+    const created = await fetch(`${base}/api/projects/plan`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ idea: 'A school attendance dashboard' }),
+    });
+    const plan = await created.json();
+
+    const approval = await fetch(`${base}/api/projects/approve`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ projectId: plan.projectId }),
+    });
+    const result = await approval.json();
+    assert.equal(approval.status, 409);
+    assert.match(result.error, /no generated workspace/i);
+
+    const projectResponse = await fetch(`${base}/api/projects/${plan.projectId}`);
+    const project = await projectResponse.json();
+    assert.equal(project.status, 'planning');
+    assert.equal(project.verified, false);
+    assert.equal(project.build, null);
+
+    const listResponse = await fetch(`${base}/api/projects`);
+    const projects = await listResponse.json();
+    const listed = projects.find(item => item.id === plan.projectId);
+    assert.equal(listed.mode, 'demo');
+    assert.equal(listed.verified, false);
+  });
+});

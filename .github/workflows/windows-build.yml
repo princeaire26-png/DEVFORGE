@@ -2,6 +2,9 @@ name: DEVFORGE Windows Build
 
 on:
   workflow_dispatch:
+  pull_request:
+    branches:
+      - main
   push:
     branches:
       - main
@@ -66,6 +69,9 @@ jobs:
       - name: Run tests
         run: npm test
 
+      - name: Run Rust tests
+        run: cargo test --manifest-path src-tauri/Cargo.toml
+
       - name: Build frontend
         run: npm run build
 
@@ -84,11 +90,15 @@ jobs:
           $files = Get-ChildItem $bundle -Recurse -File |
             Where-Object { $_.Extension -in @(".exe", ".msi") }
 
-          if (!$files) {
+          $exe = $files | Where-Object { $_.Extension -eq ".exe" -and $_.Length -gt 0 }
+          $msi = $files | Where-Object { $_.Extension -eq ".msi" -and $_.Length -gt 0 }
+          $empty = $files | Where-Object { $_.Length -le 0 }
+
+          if (!$exe -or !$msi -or $empty) {
             Get-ChildItem $bundle -Recurse -File |
               Select-Object FullName, Length
 
-            throw "No EXE or MSI installer was generated."
+            throw "Expected non-empty EXE and MSI installers; build output is incomplete."
           }
 
           $files | ForEach-Object {

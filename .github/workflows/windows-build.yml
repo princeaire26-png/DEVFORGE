@@ -16,7 +16,7 @@ concurrency:
 jobs:
   build-windows:
     name: Build DEVFORGE for Windows
-    runs-on: windows-latest
+    runs-on: windows-2022
     timeout-minutes: 60
 
     steps:

@@ -73,3 +73,4 @@ See [MILESTONE_15.md](./MILESTONE_15.md) for implementation scope and limitation
 ## Release source archive
 
 The `DEVFORGE-v1.5.1-AI-CODEBASE-AGENT.zip` source archive excludes dependencies, generated build output, local databases, and environment files. Its internal `RELEASE_MANIFEST.md` records included paths and the checks run for this source release. The source archive is not a Windows installer. Rust compilation is not verified and no `Cargo.lock` is present; generate and verify one with Cargo before treating Windows packaging as reproducible.
+devforge

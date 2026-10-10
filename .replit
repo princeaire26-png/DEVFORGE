@@ -1,0 +1,9 @@
+run = "npm run dev"
+entrypoint = "server/index.ts"
+modules = ["nodejs-22"]
+
+[nix]
+channel = "stable-25_05"
+
+[deployment]
+run = ["sh", "-c", "npm run build && node dist/server/index.js"]

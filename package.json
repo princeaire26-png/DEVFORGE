@@ -1,0 +1,42 @@
+{
+  "name": "devforge",
+  "private": true,
+  "version": "1.5.1",
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently \"npm:dev:server\" \"npm:dev:client\"",
+    "dev:server": "tsx server/index.ts",
+    "dev:client": "vite --host 0.0.0.0",
+    "build": "tsc -b && vite build",
+    "start": "node dist/server/index.js",
+    "check": "tsc --noEmit",
+    "test": "node --test tests/*.test.mjs",
+    "dev:desktop": "tauri dev",
+    "build:desktop": "tauri build",
+    "check:desktop": "tauri info"
+  },
+  "dependencies": {
+    "@vitejs/plugin-react": "latest",
+    "better-sqlite3": "latest",
+    "concurrently": "latest",
+    "express": "latest",
+    "lucide-react": "latest",
+    "react": "latest",
+    "react-dom": "latest",
+    "tsx": "latest",
+    "vite": "latest",
+    "zod": "latest",
+    "@monaco-editor/react": "latest"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "latest",
+    "@types/express": "latest",
+    "@types/node": "latest",
+    "@types/react": "latest",
+    "@types/react-dom": "latest",
+    "typescript": "latest",
+    "@tauri-apps/cli": "latest",
+    "@tauri-apps/api": "latest",
+    "@tauri-apps/plugin-dialog": "latest"
+  }
+}
